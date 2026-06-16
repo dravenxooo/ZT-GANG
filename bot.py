@@ -1,27 +1,3 @@
-Parfait ! Voici les 3 fichiers à mettre dans ton repo GitHub. Je te donne le contenu de chacun + où le mettre.
-
-📁 Structure du repo GitHub
-ton-repo/
-├── bot.py              ← le code du bot
-├── requirements.txt    ← les dépendances
-└── Dockerfile          ← l'image Docker pour Railway
-Les 3 fichiers vont à la racine du repo (pas dans un sous-dossier).
-
-1️⃣ requirements.txt
-discord.py>=2.4.0
-python-dotenv>=1.0.1
-2️⃣ Dockerfile
-FROM python:3.12-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-CMD ["python", "bot.py"]
-3️⃣ bot.py
 """
 ZT - Zéro Tolérance | Bot Discord
 """
