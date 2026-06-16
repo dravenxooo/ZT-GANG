@@ -28,21 +28,19 @@ log = logging.getLogger("zt-bot")
 TOKEN = os.environ.get("DISCORD_TOKEN")
 GUILD_ID = os.environ.get("GUILD_ID")
 GANG_NAME = os.environ.get("GANG_NAME", "ZT — Zéro Tolérance")
+STAFF_ROLE_NAME = os.environ.get("STAFF_ROLE_NAME", "Modo")
 
 # Palette ZT (sombre/luxe)
-COLOR_MAIN = 0x1A1A1A      # Noir charbon
-COLOR_ACCENT = 0x8B0000    # Rouge sang
-COLOR_SUCCESS = 0x1F4E1F   # Vert forêt sombre
-COLOR_DANGER = 0x4A0E0E    # Crimson sombre
-COLOR_WARN = 0x8B6914      # Or vieilli
-COLOR_INFO = 0x1F3A4D      # Bleu nuit
+COLOR_MAIN = 0x1A1A1A
+COLOR_ACCENT = 0x8B0000
+COLOR_SUCCESS = 0x1F4E1F
+COLOR_DANGER = 0x4A0E0E
+COLOR_WARN = 0x8B6914
+COLOR_INFO = 0x1F3A4D
 
 DIVIDER = "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 DIVIDER_SHORT = "━━━━━━━━━━━━━━━"
 
-# ═══════════════════════════════════════════════════
-# INTENTS (on enlève message_content, pas nécessaire pour slash)
-# ═══════════════════════════════════════════════════
 intents = discord.Intents.default()
 intents.members = True
 
@@ -85,12 +83,42 @@ def progress_bar(current, total, length=20):
     return f"`{bar}` **{pct}%**"
 
 
-def is_staff():
+# ═══════════════════════════════════════════════════
+# SYSTÈME DE PERMISSIONS (2 NIVEAUX)
+# ═══════════════════════════════════════════════════
+def is_admin():
+    """ADMIN UNIQUEMENT : Administrator Discord."""
     async def predicate(interaction: discord.Interaction) -> bool:
-        if interaction.user.guild_permissions.administrator or interaction.user.guild_permissions.kick_members:
+        if interaction.user.guild_permissions.administrator:
             return True
         await interaction.response.send_message(
-            embed=zt_embed("◇  Accès refusé", "Cette commande est réservée au staff.", COLOR_DANGER),
+            embed=zt_embed("◇  Accès refusé", "Cette commande est réservée aux **administrateurs**.", COLOR_DANGER),
+            ephemeral=True,
+        )
+        return False
+    return app_commands.check(predicate)
+
+
+def is_staff():
+    """STAFF : Admin OU rôle 'Modo' (STAFF_ROLE_NAME) OU permission Kick Members."""
+    async def predicate(interaction: discord.Interaction) -> bool:
+        member = interaction.user
+        if member.guild_permissions.administrator:
+            return True
+        if member.guild_permissions.kick_members:
+            return True
+        staff_role = discord.utils.find(
+            lambda r: r.name.lower() == STAFF_ROLE_NAME.lower(),
+            member.roles,
+        )
+        if staff_role:
+            return True
+        await interaction.response.send_message(
+            embed=zt_embed(
+                "◇  Accès refusé",
+                f"Cette commande est réservée au **staff** (rôle `{STAFF_ROLE_NAME}` ou modérateur).",
+                COLOR_DANGER,
+            ),
             ephemeral=True,
         )
         return False
@@ -158,7 +186,7 @@ async def on_member_join(member: discord.Member):
         await channel.send(embed=embed)
 
 
-# Sync manuelle via mention : "@bot sync"
+# Sync manuelle via mention : "@bot sync" (admin uniquement)
 @bot.event
 async def on_message(message: discord.Message):
     if message.author.bot or not message.guild:
@@ -180,7 +208,7 @@ async def on_message(message: discord.Message):
 
 
 # ═══════════════════════════════════════════════════
-# /dmall — Commande principale
+# /dmall — STAFF
 # ═══════════════════════════════════════════════════
 @bot.tree.command(name="dmall", description="Envoie un MP à tous les membres du serveur (Staff)")
 @app_commands.describe(
@@ -212,7 +240,6 @@ async def dmall(
         )
         return
 
-    # Embed DM stylé sombre
     dm = dm_embed(titre, color=COLOR_MAIN)
     dm.description = f"{DIVIDER}\n{message}\n{DIVIDER}"
     dm.add_field(name="`▸` Envoyé par", value=interaction.user.mention, inline=True)
@@ -273,9 +300,9 @@ async def dmall(
 # ═══════════════════════════════════════════════════
 # MODÉRATION
 # ═══════════════════════════════════════════════════
-@bot.tree.command(name="ban", description="Bannir un membre du serveur")
+@bot.tree.command(name="ban", description="Bannir un membre du serveur (Admin)")
 @app_commands.describe(membre="Membre à bannir", raison="Raison du bannissement")
-@is_staff()
+@is_admin()
 async def ban(interaction: discord.Interaction, membre: discord.Member, raison: str = "Non spécifiée"):
     if not interaction.user.guild_permissions.ban_members:
         await interaction.response.send_message(
@@ -295,7 +322,7 @@ async def ban(interaction: discord.Interaction, membre: discord.Member, raison: 
         )
 
 
-@bot.tree.command(name="kick", description="Expulser un membre du serveur")
+@bot.tree.command(name="kick", description="Expulser un membre du serveur (Staff)")
 @app_commands.describe(membre="Membre à expulser", raison="Raison de l'expulsion")
 @is_staff()
 async def kick(interaction: discord.Interaction, membre: discord.Member, raison: str = "Non spécifiée"):
@@ -312,7 +339,7 @@ async def kick(interaction: discord.Interaction, membre: discord.Member, raison:
         )
 
 
-@bot.tree.command(name="mute", description="Rendre muet un membre (timeout Discord)")
+@bot.tree.command(name="mute", description="Rendre muet un membre (Staff)")
 @app_commands.describe(membre="Membre à mute", minutes="Durée en minutes (max 40320)", raison="Raison")
 @is_staff()
 async def mute(interaction: discord.Interaction, membre: discord.Member, minutes: int, raison: str = "Non spécifiée"):
@@ -335,7 +362,7 @@ async def mute(interaction: discord.Interaction, membre: discord.Member, minutes
         )
 
 
-@bot.tree.command(name="unmute", description="Retirer le mute d'un membre")
+@bot.tree.command(name="unmute", description="Retirer le mute d'un membre (Staff)")
 @app_commands.describe(membre="Membre à démuter")
 @is_staff()
 async def unmute(interaction: discord.Interaction, membre: discord.Member):
@@ -350,8 +377,8 @@ async def unmute(interaction: discord.Interaction, membre: discord.Member):
         )
 
 
-@bot.tree.command(name="clear", description="Supprimer X messages du salon (1-100)")
-@app_commands.describe(nombre="Nombre de messages à supprimer")
+@bot.tree.command(name="clear", description="Supprimer X messages du salon (Staff)")
+@app_commands.describe(nombre="Nombre de messages (1-100)")
 @is_staff()
 async def clear(interaction: discord.Interaction, nombre: int):
     if nombre < 1 or nombre > 100:
@@ -366,7 +393,7 @@ async def clear(interaction: discord.Interaction, nombre: int):
     )
 
 
-@bot.tree.command(name="warn", description="Avertir un membre")
+@bot.tree.command(name="warn", description="Avertir un membre (Staff)")
 @app_commands.describe(membre="Membre à avertir", raison="Raison de l'avertissement")
 @is_staff()
 async def warn(interaction: discord.Interaction, membre: discord.Member, raison: str):
@@ -393,7 +420,7 @@ async def warn(interaction: discord.Interaction, membre: discord.Member, raison:
 # ═══════════════════════════════════════════════════
 # COMMUNICATION
 # ═══════════════════════════════════════════════════
-@bot.tree.command(name="annonce", description="Faire une annonce officielle ZT")
+@bot.tree.command(name="annonce", description="Annonce officielle ZT (Staff)")
 @app_commands.describe(titre="Titre de l'annonce", message="Contenu", salon="Salon de destination")
 @is_staff()
 async def annonce(
@@ -478,9 +505,9 @@ async def regles(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="recrue", description="Officialiser un nouveau membre du gang")
+@bot.tree.command(name="recrue", description="Officialiser un nouveau membre du gang (Admin)")
 @app_commands.describe(membre="Le nouveau membre", role="Rôle ZT à attribuer")
-@is_staff()
+@is_admin()
 async def recrue(interaction: discord.Interaction, membre: discord.Member, role: discord.Role):
     try:
         await membre.add_roles(role, reason=f"Recrutement par {interaction.user}")
@@ -501,9 +528,9 @@ async def recrue(interaction: discord.Interaction, membre: discord.Member, role:
         )
 
 
-@bot.tree.command(name="promotion", description="Promouvoir un membre à un rôle supérieur")
+@bot.tree.command(name="promotion", description="Promouvoir un membre (Admin)")
 @app_commands.describe(membre="Membre", nouveau_role="Nouveau rôle", ancien_role="Ancien rôle (optionnel)")
-@is_staff()
+@is_admin()
 async def promotion(
     interaction: discord.Interaction,
     membre: discord.Member,
@@ -562,17 +589,12 @@ async def help_cmd(interaction: discord.Interaction):
     embed.set_author(name=f"◆  Commandes — {GANG_NAME}")
     embed.description = (
         f"{DIVIDER}\n"
-        f"### `▸` Communication\n"
-        f"`/dmall` — MP à tous les membres\n"
-        f"`/annonce` — Annonce officielle\n"
-        f"`/rapport` — Envoyer un rapport au staff\n\n"
-        f"### `▸` Modération\n"
-        f"`/ban` `/kick` `/mute` `/unmute` `/warn` `/clear`\n\n"
-        f"### `▸` Gang\n"
-        f"`/recrue` — Officialiser un membre\n"
-        f"`/promotion` — Monter en grade\n"
-        f"`/regles` — Règlement\n"
-        f"`/membres` — Stats du serveur\n"
+        f"### `👑` Admin uniquement\n"
+        f"`/ban` `/recrue` `/promotion`\n\n"
+        f"### `🛡️` Staff (rôle `{STAFF_ROLE_NAME}` / Modo)\n"
+        f"`/dmall` `/annonce` `/kick` `/mute` `/unmute` `/warn` `/clear`\n\n"
+        f"### `👤` Tous les membres\n"
+        f"`/help` `/regles` `/membres` `/rapport`\n"
         f"{DIVIDER}"
     )
     if interaction.guild and interaction.guild.icon:
@@ -604,4 +626,4 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 if __name__ == "__main__":
     if not TOKEN:
         raise RuntimeError("DISCORD_TOKEN manquant dans les variables d'environnement.")
-    bot.run(TOKEN, log_handler=None
+    bot.run(TOKEN, log_handler=None)
